@@ -1,4 +1,4 @@
-FROM node:22.17-alpine3.21 AS dependencies
+FROM node:22.17-alpine3.21
 
 WORKDIR /workspace
 
