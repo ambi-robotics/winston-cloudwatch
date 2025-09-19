@@ -1,5 +1,10 @@
-import { CloudWatchLogs, PutLogEventsCommandInput, LogStream, PutLogEventsCommandOutput } from '@aws-sdk/client-cloudwatch-logs';
-import { debug } from './utils';
+import {
+  CloudWatchLogs,
+  LogStream,
+  PutLogEventsCommandInput,
+  PutLogEventsCommandOutput,
+} from "@aws-sdk/client-cloudwatch-logs";
+import { debug } from "./utils";
 
 const MAX_EVENT_MSG_SIZE_BYTES = 256000; // The real max size is 262144, we leave some room for overhead on each message
 const MAX_BATCH_SIZE_BYTES = 1000000; // We leave some fudge factor here too.
@@ -52,6 +57,14 @@ export function upload(
   });
 
   // safeUpload introduced after https://github.com/lazywithclass/winston-cloudwatch/issues/55
+  // Note that calls to upload() can occur at a greater frequency
+  // than getToken() responses are processed. By way of example, consider if add() is
+  // called at 0s and 1.1s, each time with a single event, and upload() is called
+  // at 1.0s and 2.0s, with the same logEvents array, but calls to getToken()
+  // take 1.5s to return. When the first call to getToken() DOES return,
+  // it will send both events and empty the array. Then, when the second call
+  // go getToken() returns, without this check also here, it would attempt to send
+  // an empty array, resulting in the InvalidParameterException.
   function safeUpload(cb: (err?: Error) => void): void {
     getToken(
       aws,
@@ -96,40 +109,43 @@ export function upload(
 
         lib._postingEvents[streamName] = true;
         debug("send to aws");
-        aws.putLogEvents(payload, function (err?: Error, data?: PutLogEventsCommandOutput) {
-          debug("sent to aws, err: ", err, " data: ", data);
-          if (err) {
-            // InvalidSequenceToken means we need to do a describe to get another token
-            // also do the same if ResourceNotFound as that will result in the last token
-            // for the group being set to null
-            if (
-              err.name === "InvalidSequenceTokenException" ||
-              err.name === "ResourceNotFoundException"
-            ) {
-              debug(err.name + ", retrying", true);
-              submitWithAnotherToken(
-                aws,
-                groupName,
-                streamName,
-                payload,
-                retentionInDays,
-                options,
-                cb
-              );
+        aws.putLogEvents(
+          payload,
+          function (err?: Error, data?: PutLogEventsCommandOutput) {
+            debug("sent to aws, err: ", err, " data: ", data);
+            if (err) {
+              // InvalidSequenceToken means we need to do a describe to get another token
+              // also do the same if ResourceNotFound as that will result in the last token
+              // for the group being set to null
+              if (
+                err.name === "InvalidSequenceTokenException" ||
+                err.name === "ResourceNotFoundException"
+              ) {
+                debug(err.name + ", retrying", true);
+                submitWithAnotherToken(
+                  aws,
+                  groupName,
+                  streamName,
+                  payload,
+                  retentionInDays,
+                  options,
+                  cb
+                );
+              } else {
+                debug("error during putLogEvents", err, true);
+                retrySubmit(aws, payload, 3, cb);
+              }
             } else {
-              debug("error during putLogEvents", err, true);
-              retrySubmit(aws, payload, 3, cb);
-            }
-          } else {
-            if (data && data.nextSequenceToken) {
-              lib._nextToken[previousKeyMapKey(groupName, streamName)] =
-                data.nextSequenceToken;
-            }
+              if (data && data.nextSequenceToken) {
+                lib._nextToken[previousKeyMapKey(groupName, streamName)] =
+                  data.nextSequenceToken;
+              }
 
-            delete lib._postingEvents[streamName];
-            cb();
+              delete lib._postingEvents[streamName];
+              cb();
+            }
           }
-        });
+        );
       }
     );
   }
@@ -161,7 +177,12 @@ export function submitWithAnotherToken(
   );
 }
 
-function retrySubmit(aws: CloudWatchLogs, payload: PutLogEventsCommandInput, times: number, cb: (err?: Error) => void): void {
+function retrySubmit(
+  aws: CloudWatchLogs,
+  payload: PutLogEventsCommandInput,
+  times: number,
+  cb: (err?: Error) => void
+): void {
   debug("retrying to upload", times, "more times");
   aws.putLogEvents(payload, function (err?: Error) {
     if (err && times > 0) {
@@ -190,19 +211,24 @@ export function getToken(
   }
 
   if (options.ensureLogGroup !== false) {
-    ensureGroupPresent(aws, groupName, retentionInDays, (err1, groupPresent) => {
-      if (err1) return cb(err1);
-      getStream(aws, groupName, streamName, (err2, stream) => {
-        if (err2) return cb(err2);
-        if (groupPresent && stream) {
-          debug("token found", stream.uploadSequenceToken);
-          cb(undefined, stream.uploadSequenceToken);
-        } else {
-          debug("token not found", err2);
-          cb(err2);
-        }
-      });
-    });
+    ensureGroupPresent(
+      aws,
+      groupName,
+      retentionInDays,
+      (err1, groupPresent) => {
+        if (err1) return cb(err1);
+        getStream(aws, groupName, streamName, (err2, stream) => {
+          if (err2) return cb(err2);
+          if (groupPresent && stream) {
+            debug("token found", stream.uploadSequenceToken);
+            cb(undefined, stream.uploadSequenceToken);
+          } else {
+            debug("token not found", err2);
+            cb(err2);
+          }
+        });
+      }
+    );
   } else {
     getStream(aws, groupName, streamName, (err, stream) => {
       if (err) return cb(err);
@@ -247,7 +273,11 @@ export function ensureGroupPresent(
   });
 }
 
-export function putRetentionPolicy(aws: CloudWatchLogs, groupName: string, days: number): void {
+export function putRetentionPolicy(
+  aws: CloudWatchLogs,
+  groupName: string,
+  days: number
+): void {
   const params = {
     logGroupName: groupName,
     retentionInDays: days,
@@ -270,7 +300,12 @@ export function putRetentionPolicy(aws: CloudWatchLogs, groupName: string, days:
   }
 }
 
-export function getStream(aws: CloudWatchLogs, groupName: string, streamName: string, cb: (err?: Error, stream?: LogStream) => void): void {
+export function getStream(
+  aws: CloudWatchLogs,
+  groupName: string,
+  streamName: string,
+  cb: (err?: Error, stream?: LogStream) => void
+): void {
   const params = {
     logGroupName: groupName,
     logStreamNamePrefix: streamName,
@@ -302,7 +337,9 @@ export function getStream(aws: CloudWatchLogs, groupName: string, streamName: st
   });
 }
 
-export function ignoreInProgress(cb: (err?: Error, data?: any) => void): (err?: Error, data?: any) => void {
+export function ignoreInProgress(
+  cb: (err?: Error, data?: any) => void
+): (err?: Error, data?: any) => void {
   return function (err?: Error, data?: any) {
     if (
       err &&

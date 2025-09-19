@@ -20,8 +20,7 @@
     "prepare": "husky",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
-    "update-dependencies": "npm-check-updates -ua && npm install"
+    "test:coverage": "jest --coverage"
   },
   "repository": "https://github.com/ambi-robotics/winston-cloudwatch",
   "author": "me@lazywithclass.com",
@@ -31,23 +30,21 @@
     "winston": "^3.17.0"
   },
   "dependencies": {
-    "async": "^3.2.6",
-    "fast-safe-stringify": "^2.1.1"
+    "fast-safe-stringify": "^2.1.1",
+    "winston-transport": "^4.9.0"
   },
   "devDependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.891.0",
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@jest/globals": "^30.1.2",
-    "@types/async": "^3.2.25",
     "@types/jest": "^30.0.0",
     "@types/node": "22.15.19",
     "@types/winston": "2.4.4",
     "husky": "^9.1.7",
     "jest": "^30.1.3",
-    "npm-check-updates": "^18.1.1",
+    "knip": "^5.63.1",
     "ts-jest": "^29.4.3",
-    "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
   "engines": {

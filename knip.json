@@ -1,0 +1,12 @@
+{
+  "entry": [
+    "index.ts!"
+  ],
+  "project": [
+    "lib/**/*.ts",
+    "test/**/*.ts"
+  ],
+  "ignore": [
+    "examples/*"
+  ]
+}
