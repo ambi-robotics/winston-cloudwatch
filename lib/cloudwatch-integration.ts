@@ -6,32 +6,73 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import { debug } from "./utils";
 
+/** Maximum size in bytes for a single log event message (with buffer for overhead) */
 const MAX_EVENT_MSG_SIZE_BYTES = 256000; // The real max size is 262144, we leave some room for overhead on each message
+/** Maximum size in bytes for a batch of log events (with buffer for safety) */
 const MAX_BATCH_SIZE_BYTES = 1000000; // We leave some fudge factor here too.
 
-// CloudWatch adds 26 bytes per log event based on their documentation:
-// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
+/**
+ * Base overhead size in bytes that CloudWatch adds per log event
+ * @see https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
+ */
 const BASE_EVENT_SIZE_BYTES = 26;
 
+/**
+ * Represents a single log event to be sent to CloudWatch Logs
+ */
 export interface LogEvent {
+  /** The log message content */
   message: string;
+  /** Unix timestamp in milliseconds when the log event occurred */
   timestamp: number;
 }
 
+/**
+ * Options for CloudWatch Logs operations
+ */
 export interface CloudWatchOptions {
+  /** Whether to ensure the log group exists before attempting to write (defaults to true) */
   ensureLogGroup?: boolean;
 }
 
+/**
+ * Internal library state for managing CloudWatch Logs uploads
+ * @internal
+ */
 interface CloudWatchLibrary {
+  /** Tracks streams currently uploading to prevent concurrent uploads */
   _postingEvents: Record<string, boolean>;
+  /** Caches sequence tokens for log streams */
   _nextToken: Record<string, string | null>;
 }
 
+/**
+ * Internal state management for the CloudWatch integration
+ * @internal
+ */
 const lib: CloudWatchLibrary = {
   _postingEvents: {},
   _nextToken: {},
 };
 
+/**
+ * Uploads log events to CloudWatch Logs with proper error handling and retry logic
+ *
+ * This function handles:
+ * - Preventing concurrent uploads to the same stream
+ * - Message size validation and truncation
+ * - Batch size management
+ * - Sequence token management
+ * - Retry logic for various error conditions
+ *
+ * @param aws - CloudWatch Logs client instance
+ * @param groupName - Name of the CloudWatch log group
+ * @param streamName - Name of the CloudWatch log stream
+ * @param logEvents - Array of log events to upload
+ * @param retentionInDays - Log retention period in days
+ * @param options - Upload options
+ * @param cb - Callback function called when upload completes
+ */
 export function upload(
   aws: CloudWatchLogs,
   groupName: string,

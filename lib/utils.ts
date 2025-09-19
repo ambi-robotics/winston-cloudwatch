@@ -1,6 +1,12 @@
 import safeStringify from 'fast-safe-stringify';
 
-function handleErrorObject(key: string, value: any): any {
+/**
+ * JSON replacer function that properly serializes Error objects
+ * @param _key - The property key being stringified (unused)
+ * @param value - The property value being stringified
+ * @returns The processed value for JSON serialization
+ */
+function handleErrorObject(_key: string, value: any): any {
   if (value instanceof Error) {
     return Object.getOwnPropertyNames(value).reduce(function (error: any, key: string) {
       error[key] = value[key as keyof Error];
@@ -10,10 +16,20 @@ function handleErrorObject(key: string, value: any): any {
   return value;
 }
 
+/**
+ * Safely stringify an object to JSON, handling circular references and Error objects
+ * @param o - The object to stringify
+ * @returns JSON string representation of the object
+ */
 export function stringify(o: any): string {
   return safeStringify(o, handleErrorObject, "  ");
 }
 
+/**
+ * Debug logging function that only outputs when WINSTON_CLOUDWATCH_DEBUG environment variable is set
+ * Supports colored output with the last parameter being a boolean indicating error (red) vs info (green)
+ * @param args - Arguments to log, with optional boolean as last parameter for error coloring
+ */
 export function debug(...args: any[]): void {
   if (!process.env.WINSTON_CLOUDWATCH_DEBUG) return;
   const argsCopy = [...args];
