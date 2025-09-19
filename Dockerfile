@@ -1,6 +1,5 @@
-FROM node
+FROM node:22.17-alpine3.21
 
 WORKDIR /workspace
 
-RUN apt-get update
-RUN apt-get install -y vim
+RUN apk update && apk add vim && rm -rf /var/cache/apk/*

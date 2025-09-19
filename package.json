@@ -11,38 +11,48 @@
   ],
   "main": "index.js",
   "scripts": {
-    "test": "make test",
+    "docker:build": "docker build -t winston-cloudwatch-build .",
+    "docker:start": "docker run -v `pwd`:/workspace --rm -it winston-cloudwatch-build /bin/sh",
+    "prepare": "husky",
+    "test": "./node_modules/.bin/istanbul cover ./node_modules/.bin/_mocha test -- --recursive --require should -R dot",
+    "test:watch": "./node_modules/.bin/mocha test --recursive --require should -w",
     "coveralls": "coveralls < ./coverage/lcov.info",
     "update-dependencies": "npm-check-updates -ua && npm install"
   },
-  "repository": "https://github.com/lazywithclass/winston-cloudwatch",
+  "repository": "https://github.com/ambi-robotics/winston-cloudwatch",
   "author": "me@lazywithclass.com",
   "license": "MIT",
   "typings": "typescript/winston-cloudwatch.d.ts",
   "peerDependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "^3.0.0",
-    "winston": "^3.0.0"
+    "@aws-sdk/client-cloudwatch-logs": "^^3.890.0",
+    "winston": "^3.17.0"
   },
   "dependencies": {
-    "async": "^3.1.0",
-    "chalk": "^4.0.0",
-    "fast-safe-stringify": "^2.0.7",
+    "async": "^3.2.6",
+    "chalk": "^5.6.2",
+    "fast-safe-stringify": "^2.1.1",
     "lodash.assign": "^4.2.0",
     "lodash.find": "^4.6.0",
     "lodash.isempty": "^4.4.0",
     "lodash.iserror": "^3.1.1"
   },
   "devDependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "^3.0.0",
-    "@types/node": "13.11.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.891.0",
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@types/node": "22.15.19",
     "@types/winston": "2.4.4",
-    "clarify": "^2.1.0",
-    "coveralls": "^3.0.7",
+    "clarify": "^2.2.0",
+    "coveralls": "^3.1.1",
+    "husky": "^9.1.7",
     "istanbul": "^0.4.5",
-    "mocha": "^9.1.3",
+    "mocha": "^11.7.2",
     "mockery": "^2.1.0",
-    "npm-check-updates": "^4.1.1",
+    "npm-check-updates": "^18.1.1",
     "should": "^13.2.3",
-    "sinon": "^11.1.2"
+    "sinon": "^21.0.0"
+  },
+  "engines": {
+    "node": ">=22.17.0"
   }
 }
