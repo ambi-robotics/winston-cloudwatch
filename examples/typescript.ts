@@ -1,19 +1,21 @@
-/// <reference path="../typescript/winston-cloudwatch.d.ts" />
+import * as winston from 'winston';
+import WinstonCloudWatch from '../index';
 
-import WinstonCloudwatch from "../typescript/winston-cloudwatch"
+const logger = winston.createLogger({
+  transports: [
+    new WinstonCloudWatch({
+      name: 'using-kthxbye',
+      logGroupName: 'testing',
+      logStreamName: 'another',
+      awsRegion: 'us-east-1'
+    })
+  ]
+});
 
-const winston = require('winston'),
-    WinstonCloudWatch = require('../index')
-
-const me = winston.add(new WinstonCloudwatch({
-  name: 'using-kthxbye',
-  logGroupName: 'testing',
-  logStreamName: 'another',
-  awsRegion: 'us-east-1'
-}))
-
-winston.error('1')
+logger.error('1');
 
 // flushes the logs and clears setInterval
-let transport = me.transports.find(t => t.name === 'using-kthxbye')
-transport.kthxbye(() => console.log('bye'))
+const transport = logger.transports.find((t: any) => t.name === 'using-kthxbye') as WinstonCloudWatch;
+if (transport) {
+  transport.kthxbye(() => console.log('bye'));
+}
