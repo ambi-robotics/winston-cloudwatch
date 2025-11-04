@@ -1,11 +1,11 @@
-import TransportStream = require("winston-transport");
+import TransportStream = require('winston-transport');
 
 import {
   CloudWatchLogs,
   CloudWatchLogsClientConfig,
-} from "@aws-sdk/client-cloudwatch-logs";
+} from '@aws-sdk/client-cloudwatch-logs';
 
-import winston = require("winston");
+import winston = require('winston');
 
 // Declare the default WinstonCloudwatch class
 declare class WinstonCloudwatch extends TransportStream {

@@ -1,17 +1,17 @@
-"use strict";
+'use strict';
 
-const winston = require("winston");
-const { CloudWatchLogs } = require("@aws-sdk/client-cloudwatch-logs");
-const cloudWatchIntegration = require("./lib/cloudwatch-integration");
-const { stringify, debug, isEmpty, isError } = require("./lib/utils");
+const winston = require('winston');
+const { CloudWatchLogs } = require('@aws-sdk/client-cloudwatch-logs');
+const cloudWatchIntegration = require('./lib/cloudwatch-integration');
+const { stringify, debug, isEmpty, isError } = require('./lib/utils');
 const defaultFlushTimeoutMs = 10000;
 
 class WinstonCloudWatch extends winston.Transport {
   constructor(options) {
     super(options);
 
-    this.level = options.level || "info";
-    this.name = options.name || "CloudWatch";
+    this.level = options.level || 'info';
+    this.name = options.name || 'CloudWatch';
     this.logGroupName = options.logGroupName;
     this.retentionInDays = options.retentionInDays || 0;
     this.logStreamName = options.logStreamName;
@@ -22,7 +22,7 @@ class WinstonCloudWatch extends winston.Transport {
     const awsRegion = options.awsRegion;
     const messageFormatter =
       options.messageFormatter ||
-      ((log) => [log.level, log.message].join(" - "));
+      ((log) => [log.level, log.message].join(' - '));
     this.formatMessage = options.jsonMessage ? stringify : messageFormatter;
     this.uploadRate = options.uploadRate || 2000;
     this.logEvents = [];
@@ -53,11 +53,11 @@ class WinstonCloudWatch extends winston.Transport {
       this.cloudWatchLogs = new CloudWatchLogs(config);
     }
 
-    debug("constructor finished");
+    debug('constructor finished');
   }
 
   log(info, callback) {
-    debug("log (called by winston)", info);
+    debug('log (called by winston)', info);
 
     if (!isEmpty(info.message) || isError(info.message)) {
       this.add(info, info.timestamp);
@@ -68,7 +68,7 @@ class WinstonCloudWatch extends winston.Transport {
       return callback(null, true);
     }
 
-    debug("message not empty, proceeding");
+    debug('message not empty, proceeding');
 
     // clear interval and send logs immediately
     // as Winston is about to end the process
@@ -78,7 +78,7 @@ class WinstonCloudWatch extends winston.Transport {
   }
 
   add(log, timestamp) {
-    debug("add log to queue", log);
+    debug('add log to queue', log);
 
     if (!isEmpty(log.message) || isError(log.message)) {
       this.logEvents.push({
@@ -88,11 +88,11 @@ class WinstonCloudWatch extends winston.Transport {
     }
 
     if (!this.intervalId) {
-      debug("creating interval");
+      debug('creating interval');
       this.intervalId = setInterval(() => {
         this.submit((err) => {
           if (err) {
-            debug("error during submit", err, true);
+            debug('error during submit', err, true);
             this.errorHandler ? this.errorHandler(err) : console.error(err);
           }
         });
@@ -102,11 +102,11 @@ class WinstonCloudWatch extends winston.Transport {
 
   submit(callback) {
     const groupName =
-      typeof this.logGroupName === "function"
+      typeof this.logGroupName === 'function'
         ? this.logGroupName()
         : this.logGroupName;
     const streamName =
-      typeof this.logStreamName === "function"
+      typeof this.logStreamName === 'function'
         ? this.logStreamName()
         : this.logStreamName;
     const retentionInDays = this.retentionInDays;
@@ -129,21 +129,21 @@ class WinstonCloudWatch extends winston.Transport {
   }
 
   kthxbye(callback) {
-    debug("clearing interval");
+    debug('clearing interval');
     clearInterval(this.intervalId);
     this.intervalId = null;
-    debug("interval cleared");
+    debug('interval cleared');
     this.flushTimeout = this.flushTimeout || Date.now() + defaultFlushTimeoutMs;
-    debug("flush timeout set to", this.flushTimeout);
+    debug('flush timeout set to', this.flushTimeout);
 
     this.submit((error) => {
-      debug("submit done", error);
+      debug('submit done', error);
       const groupName =
-        typeof this.logGroupName === "function"
+        typeof this.logGroupName === 'function'
           ? this.logGroupName()
           : this.logGroupName;
       const streamName =
-        typeof this.logStreamName === "function"
+        typeof this.logStreamName === 'function'
           ? this.logStreamName()
           : this.logStreamName;
       cloudWatchIntegration.clearSequenceToken(groupName, streamName);
@@ -151,7 +151,7 @@ class WinstonCloudWatch extends winston.Transport {
       if (isEmpty(this.logEvents)) return callback();
       if (Date.now() > this.flushTimeout)
         return callback(
-          new Error("Timeout reached while waiting for logs to submit")
+          new Error('Timeout reached while waiting for logs to submit')
         );
       else setTimeout(() => this.kthxbye(callback), 0);
     });
