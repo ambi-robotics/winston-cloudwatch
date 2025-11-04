@@ -37,6 +37,9 @@ jobs:
 
       - name: Semantic Release
         env:
+          # Uses tag-only releases to avoid conflicts with branch protection
+          # Publishes to GitHub Packages and creates GitHub releases/tags
+          # Does not commit version bumps back to master branch
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
