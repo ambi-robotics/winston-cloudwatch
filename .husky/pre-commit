@@ -5,5 +5,4 @@ if [ "$BRANCH" == "master" ] || [ "$BRANCH" == "develop" ]; then
   exit 1
 fi
 
-# Format staged files with Prettier
-npm run format
+npm run format && npm run lint:fix && npm test
