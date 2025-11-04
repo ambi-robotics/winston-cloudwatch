@@ -37,7 +37,6 @@
       "email": "mike.gray@ambirobotics.com"
     }
   ],
-  "private": true,
   "license": "MIT",
   "typings": "typescript/winston-cloudwatch.d.ts",
   "peerDependencies": {
