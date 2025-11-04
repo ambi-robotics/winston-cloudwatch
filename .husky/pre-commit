@@ -1,0 +1,6 @@
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+if [ "$BRANCH" == "master" ] || [ "$BRANCH" == "develop" ]; then
+  echo "Do not commit directly to master or develop branches"
+  exit 1
+fi
