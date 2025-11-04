@@ -1,6 +1,6 @@
 {
   "name": "@ambi-robotics/winston-cloudwatch",
-  "version": "7.0.0",
+  "version": "1.0.1",
   "description": "Send logs to Amazon Cloudwatch using Winston.",
   "keywords": [
     "amazon",
@@ -18,16 +18,16 @@
     "README.md"
   ],
   "scripts": {
-    "knip": "knip --cache",
-    "prepare": "husky",
-    "test": "nyc --reporter=text --reporter=lcov mocha test --recursive -R dot",
-    "test:watch": "./node_modules/.bin/mocha test --recursive -w",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "knip": "knip --cache",
+    "lint": "eslint --cache .",
+    "lint:fix": "eslint . --fix",
     "pack:local": "npm pack",
-    "pack:test": "echo 'To test: npm install <path-to-tgz-file>' && npm pack"
+    "pack:test": "echo 'To test: npm install <path-to-tgz-file>' && npm pack",
+    "prepare": "husky",
+    "test": "nyc --reporter=text --reporter=lcov mocha test --recursive -R dot",
+    "test:watch": "./node_modules/.bin/mocha test --recursive -w"
   },
   "repository": "https://github.com/ambi-robotics/winston-cloudwatch",
   "author": "me@lazywithclass.com",
