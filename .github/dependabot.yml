@@ -1,0 +1,36 @@
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directories:
+      - '/'
+    target-branch: 'develop'
+    commit-message:
+      prefix: 'dependabot-npm'
+      prefix-development: 'dependabot-npm-dev'
+    labels:
+      - 'npm'
+      - 'dependencies'
+    rebase-strategy: 'auto'
+    schedule:
+      interval: 'weekly'
+    registries: # Should also use public npm by default
+      - github-npm-registry
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    target-branch: 'develop'
+    commit-message:
+      prefix: 'dependabot-github-actions'
+      prefix-development: 'dependabot-github-actions-dev'
+    labels:
+      - 'github-actions'
+      - 'dependencies'
+    rebase-strategy: 'auto'
+    schedule:
+      interval: 'weekly'
+
+registries:
+  github-npm-registry:
+    type: 'npm-registry'
+    url: 'https://npm.pkg.github.com'
+    token: '${{ secrets.GITHUB_TOKEN }}'

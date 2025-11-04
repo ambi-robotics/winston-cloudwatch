@@ -4,3 +4,8 @@ if [ "$BRANCH" == "master" ] || [ "$BRANCH" == "develop" ]; then
   echo "Do not commit directly to master or develop branches"
   exit 1
 fi
+
+npx lint-staged
+
+echo "Running knip to check for unused code..."
+npm run knip

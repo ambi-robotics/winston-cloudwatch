@@ -1,6 +1,6 @@
 {
-  "name": "winston-cloudwatch",
-  "version": "6.3.0",
+  "name": "@ambi-robotics/winston-cloudwatch",
+  "version": "7.0.0",
   "description": "Send logs to Amazon Cloudwatch using Winston.",
   "keywords": [
     "amazon",
@@ -10,49 +10,74 @@
     "log"
   ],
   "main": "index.js",
+  "files": [
+    "index.js",
+    "lib/",
+    "typescript/",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
-    "docker:build": "docker build -t winston-cloudwatch-build .",
-    "docker:start": "docker run -v `pwd`:/workspace --rm -it winston-cloudwatch-build /bin/sh",
+    "knip": "knip --cache",
     "prepare": "husky",
-    "test": "./node_modules/.bin/istanbul cover ./node_modules/.bin/_mocha test -- --recursive --require should -R dot",
-    "test:watch": "./node_modules/.bin/mocha test --recursive --require should -w",
-    "coveralls": "coveralls < ./coverage/lcov.info",
-    "update-dependencies": "npm-check-updates -ua && npm install"
+    "test": "nyc --reporter=text --reporter=lcov mocha test --recursive -R dot",
+    "test:watch": "./node_modules/.bin/mocha test --recursive -w",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "pack:local": "npm pack",
+    "pack:test": "echo 'To test: npm install <path-to-tgz-file>' && npm pack"
   },
   "repository": "https://github.com/ambi-robotics/winston-cloudwatch",
   "author": "me@lazywithclass.com",
+  "contributors": [
+    {
+      "name": "Mike Gray",
+      "email": "mike.gray@ambirobotics.com"
+    }
+  ],
+  "private": true,
   "license": "MIT",
   "typings": "typescript/winston-cloudwatch.d.ts",
   "peerDependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "^^3.890.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.922.0",
     "winston": "^3.17.0"
   },
   "dependencies": {
-    "async": "^3.2.6",
-    "chalk": "^5.6.2",
-    "fast-safe-stringify": "^2.1.1",
-    "lodash.assign": "^4.2.0",
-    "lodash.find": "^4.6.0",
-    "lodash.isempty": "^4.4.0",
-    "lodash.iserror": "^3.1.1"
+    "safe-stable-stringify": "^2.5.0"
   },
   "devDependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "^3.891.0",
-    "@commitlint/cli": "^19.8.1",
-    "@commitlint/config-conventional": "^19.8.1",
-    "@types/node": "22.15.19",
+    "@aws-sdk/client-cloudwatch-logs": "^3.922.0",
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.0.0",
+    "@eslint/js": "^9.39.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@types/node": "24.10.0",
     "@types/winston": "2.4.4",
-    "clarify": "^2.2.0",
-    "coveralls": "^3.1.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "lint-staged": "^16.2.6",
     "husky": "^9.1.7",
-    "istanbul": "^0.4.5",
-    "mocha": "^11.7.2",
-    "mockery": "^2.1.0",
-    "npm-check-updates": "^18.1.1",
-    "should": "^13.2.3",
+    "knip": "^5.66.3",
+    "mocha": "^11.7.4",
+    "nyc": "^17.1.0",
+    "prettier": "^3.6.2",
+    "rewiremock": "^3.14.6",
+    "semantic-release": "^24.2.9",
     "sinon": "^21.0.0"
+  },
+  "lint-staged": {
+    "**/*.{ts,js,json,md,yaml,yml}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
   },
   "engines": {
     "node": ">=22.17.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
   }
 }

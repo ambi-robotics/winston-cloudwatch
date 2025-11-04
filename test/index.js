@@ -1,33 +1,20 @@
-describe("index", function () {
-  const sinon = require("sinon");
-  const should = require("should");
-  const mockery = require("mockery");
+describe('index', function () {
+  const assert = require('node:assert/strict');
+  const sinon = require('sinon');
+  const path = require('path');
+  const rewiremock = require('rewiremock/node');
 
   const stubbedWinston = {
     transports: {},
     Transport: function () {},
   };
-  const stubbedAWS = {
-    CloudWatchLogs: function (options) {
-      this.fakeOptions = options;
-    },
-    config: {
-      update: sinon.stub(),
-    },
-  };
   const stubbedCloudwatchIntegration = {
-    upload: sinon.spy(function (
-      aws,
-      groupName,
-      streamName,
-      logEvents,
-      retention,
-      options,
-      cb
-    ) {
-      this.lastLoggedEvents = logEvents.splice(0, 20);
-      cb();
-    }),
+    upload: sinon.spy(
+      function (aws, groupName, streamName, logEvents, retention, options) {
+        this.lastLoggedEvents = logEvents.splice(0, 20);
+        return Promise.resolve();
+      }
+    ),
     clearSequenceToken: sinon.stub(),
   };
   const clock = sinon.useFakeTimers();
@@ -35,97 +22,87 @@ describe("index", function () {
   let WinstonCloudWatch;
 
   before(function () {
-    mockery.enable({
-      warnOnReplace: false,
-    });
-    mockery.registerAllowable("util");
-    mockery.registerAllowable("lodash.find");
-    mockery.registerAllowable("lodash.assign");
-    mockery.registerAllowable("lodash.isempty");
-    mockery.registerAllowable("lodash.iserror");
-    mockery.registerAllowable("./lib/utils");
-    mockery.registerAllowable("@aws-sdk/client-cloudwatch-logs");
-    mockery.registerAllowable("aws-crt");
-
-    mockery.registerMock("winston", stubbedWinston);
-    mockery.registerMock("aws-sdk", stubbedAWS);
-    mockery.registerMock(
-      "./lib/cloudwatch-integration",
-      stubbedCloudwatchIntegration
+    const indexPath = path.resolve(__dirname, '../index.js');
+    const integrationPath = path.resolve(
+      __dirname,
+      '../lib/cloudwatch-integration'
     );
 
-    mockery.registerAllowable("../index.js");
-    WinstonCloudWatch = require("../index.js");
+    WinstonCloudWatch = rewiremock.proxy(() => require(indexPath), {
+      winston: stubbedWinston,
+      [integrationPath]: stubbedCloudwatchIntegration,
+    });
   });
 
   after(function () {
-    mockery.deregisterAll();
-    mockery.disable();
     clock.restore();
   });
 
-  describe("constructor", function () {
-    it("allows cloudWatchLogs", function () {
+  describe('constructor', function () {
+    it('allows cloudWatchLogs', function () {
       const options = {
-        cloudWatchLogs: { fakeOptions: { region: "us-west-2" } },
+        cloudWatchLogs: { fakeOptions: { region: 'us-west-2' } },
       };
       const transport = new WinstonCloudWatch(options);
-      transport.cloudWatchLogs.fakeOptions.region.should.equal("us-west-2");
+      assert.strictEqual(
+        transport.cloudWatchLogs.fakeOptions.region,
+        'us-west-2'
+      );
     });
 
-    it("allows awsOptions", function () {
+    it('allows awsOptions', function () {
       const options = {
         awsOptions: {
-          region: "us-east-1",
+          region: 'us-east-1',
         },
       };
       const transport = new WinstonCloudWatch(options);
       transport.cloudWatchLogs.config.region().then((region) => {
-        region.should.equal("us-east-1");
+        assert.strictEqual(region, 'us-east-1');
       });
     });
 
-    it("merges awsOptions into existing ones", function () {
+    it('merges awsOptions into existing ones', function () {
       const options = {
-        region: "eu-west-1",
+        region: 'eu-west-1',
         awsOptions: {
-          region: "us-east-1",
+          region: 'us-east-1',
         },
       };
       const transport = new WinstonCloudWatch(options);
       return transport.cloudWatchLogs.config.region().then((region) => {
-        region.should.equal("us-east-1");
+        assert.strictEqual(region, 'us-east-1');
       });
     });
   });
 
-  describe("log", function () {
+  describe('log', function () {
     let transport;
 
     beforeEach(function (done) {
       transport = new WinstonCloudWatch({});
-      transport.log({ level: "level" }, function () {
+      transport.log({ level: 'level' }, function () {
         clock.tick(2000);
         done();
       });
     });
 
-    it("does not upload if empty message", function (done) {
-      stubbedCloudwatchIntegration.upload.called.should.equal(false);
+    it('does not upload if empty message', function (done) {
+      assert.strictEqual(stubbedCloudwatchIntegration.upload.called, false);
       done();
     });
 
-    it("flushes logs and exits in case of an exception", function (done) {
+    it('flushes logs and exits in case of an exception', function (done) {
       transport = new WinstonCloudWatch({});
-      transport.log({ message: "uncaughtException: " }, function () {
+      transport.log({ message: 'uncaughtException: ' }, function () {
         clock.tick(2000);
-        should.not.exist(transport.intervalId);
+        assert.strictEqual(transport.intervalId, null);
         // if done is called it means submit(callback) has been called
         done();
       });
     });
 
-    describe("as json", function () {
+    describe('as json', function () {
       let transport;
       const options = {
         jsonMessage: true,
@@ -134,7 +111,7 @@ describe("index", function () {
       before(function (done) {
         transport = new WinstonCloudWatch(options);
         transport.log(
-          { level: "level", message: "message", something: "else" },
+          { level: 'level', message: 'message', something: 'else' },
           function () {
             clock.tick(2000);
             done();
@@ -142,115 +119,177 @@ describe("index", function () {
         );
       });
 
-      it("logs json", function () {
+      it('logs json', function () {
         const message =
           stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
         const jsonMessage = JSON.parse(message);
-        jsonMessage.level.should.equal("level");
-        jsonMessage.message.should.equal("message");
-        jsonMessage.something.should.equal("else");
+        assert.strictEqual(jsonMessage.level, 'level');
+        assert.strictEqual(jsonMessage.message, 'message');
+        assert.strictEqual(jsonMessage.something, 'else');
       });
     });
 
-    describe("as text", function () {
+    describe('as text', function () {
       let transport;
 
-      describe("using the default formatter", function () {
+      describe('using the default formatter', function () {
         before(function (done) {
           transport = new WinstonCloudWatch({});
-          transport.log({ level: "level", message: "message" }, done);
+          transport.log({ level: 'level', message: 'message' }, done);
           clock.tick(2000);
         });
 
-        it("logs text", function () {
+        it('logs text', function () {
           const message =
             stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
-          message.should.equal("level - message");
+          assert.strictEqual(message, 'level - message');
         });
       });
 
-      describe("using a custom formatter", function () {
+      describe('using a custom formatter', function () {
         const options = {
           messageFormatter: function (log) {
-            return log.level + " " + log.message + " " + log.something;
+            return log.level + ' ' + log.message + ' ' + log.something;
           },
         };
 
         before(function (done) {
           transport = new WinstonCloudWatch(options);
           transport.log(
-            { level: "level", message: "message", something: "else" },
+            { level: 'level', message: 'message', something: 'else' },
             done
           );
           clock.tick(2000);
         });
 
-        it("logs text", function () {
+        it('logs text', function () {
           const message =
             stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
-          message.should.equal("level message else");
+          assert.strictEqual(message, 'level message else');
         });
       });
     });
 
-    describe("info object and a callback as arguments", function () {
+    describe('info object and a callback as arguments', function () {
       before(function (done) {
         transport = new WinstonCloudWatch({});
-        transport.log({ level: "level", message: "message" }, function () {
+        transport.log({ level: 'level', message: 'message' }, function () {
           clock.tick(2000);
           done();
         });
       });
 
-      it("logs text", function () {
+      it('logs text', function () {
         const message =
           stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
-        message.should.equal("level - message");
+        assert.strictEqual(message, 'level - message');
       });
     });
 
-    describe("handles error", function () {
+    describe('timestamp handling', function () {
+      let transport;
+
       beforeEach(function () {
-        stubbedCloudwatchIntegration.upload = sinon.stub().yields("ERROR");
-        mockery.registerMock(
-          "./lib/cloudwatch-integration",
-          stubbedCloudwatchIntegration
+        transport = new WinstonCloudWatch({});
+      });
+
+      it('uses timestamp from info object when provided', function (done) {
+        const customTimestamp = 1234567890;
+        transport.log(
+          { level: 'level', message: 'message', timestamp: customTimestamp },
+          function () {
+            clock.tick(2000);
+            const loggedEvent =
+              stubbedCloudwatchIntegration.lastLoggedEvents[0];
+            assert.strictEqual(loggedEvent.timestamp, customTimestamp);
+            done();
+          }
         );
-        sinon.stub(console, "error");
+      });
+
+      it('uses current time when no timestamp provided', function (done) {
+        const beforeTime = Date.now();
+        transport.log({ level: 'level', message: 'message' }, function () {
+          clock.tick(2000);
+          const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
+          assert.ok(
+            Math.abs(loggedEvent.timestamp - beforeTime) <= 100,
+            `Expected loggedEvent.timestamp to be approximately beforeTime ± 100`
+          );
+          done();
+        });
+      });
+
+      it('passes timestamp from add method explicitly', function () {
+        const customTimestamp = 9876543210;
+        transport.add({ level: 'level', message: 'message' }, customTimestamp);
+        clock.tick(2000);
+        const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
+        assert.strictEqual(loggedEvent.timestamp, customTimestamp);
+      });
+
+      it('prioritizes explicit timestamp over log.timestamp', function () {
+        const explicitTimestamp = 1111111111;
+        const logTimestamp = 2222222222;
+        transport.add(
+          { level: 'level', message: 'message', timestamp: logTimestamp },
+          explicitTimestamp
+        );
+        clock.tick(2000);
+        const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
+        assert.strictEqual(loggedEvent.timestamp, explicitTimestamp);
+      });
+    });
+
+    describe('handles error', function () {
+      let consoleErrorStub;
+
+      beforeEach(function () {
+        stubbedCloudwatchIntegration.upload = sinon
+          .stub()
+          .rejects(new Error('ERROR'));
+        consoleErrorStub = sinon.stub(console, 'error');
       });
 
       afterEach(function () {
-        stubbedCloudwatchIntegration.upload = sinon.spy();
-        console.error.restore();
+        stubbedCloudwatchIntegration.upload = sinon.spy(
+          function (aws, groupName, streamName, logEvents, retention, options) {
+            this.lastLoggedEvents = logEvents.splice(0, 20);
+            return Promise.resolve();
+          }
+        );
+        if (consoleErrorStub && consoleErrorStub.restore) {
+          consoleErrorStub.restore();
+        }
       });
 
-      it("invoking errorHandler if provided", function () {
+      it('invoking errorHandler if provided', async function () {
         const errorHandlerSpy = sinon.spy();
         const transport = new WinstonCloudWatch({
           errorHandler: errorHandlerSpy,
         });
-        transport.log({ level: "level", message: "message" }, sinon.stub());
-        clock.tick(2000);
-        errorHandlerSpy.args[0][0].should.equal("ERROR");
+        transport.log({ level: 'level', message: 'message' }, sinon.stub());
+        await clock.tickAsync(2000);
+        assert.strictEqual(errorHandlerSpy.args[0][0].message, 'ERROR');
       });
 
-      it("console.error if errorHandler is not provided", function () {
+      it('console.error if errorHandler is not provided', async function () {
         const transport = new WinstonCloudWatch({});
-        transport.log({ level: "level", message: "message" }, sinon.stub());
-        clock.tick(2000);
-        console.error.args[0][0].should.equal("ERROR");
+        transport.log({ level: 'level', message: 'message' }, sinon.stub());
+        await clock.tickAsync(2000);
+        assert.strictEqual(console.error.args[0][0].message, 'ERROR');
       });
     });
   });
 
-  describe("ktxhbye", function () {
+  describe('ktxhbye', function () {
     let transport;
 
     beforeEach(function () {
-      sinon.stub(global, "setInterval");
-      sinon.stub(global, "clearInterval");
+      sinon.stub(global, 'setInterval');
+      sinon.stub(global, 'clearInterval');
       transport = new WinstonCloudWatch({});
-      sinon.stub(transport, "submit").callsFake(function (cb) {
+      sinon.stub(transport, 'submit').callsFake(function (cb) {
         this.logEvents.splice(0, 20);
         cb();
       });
@@ -262,46 +301,46 @@ describe("index", function () {
       transport.submit.restore();
     });
 
-    it("clears the interval", function (done) {
-      transport.intervalId = "fake";
+    it('clears the interval', function (done) {
+      transport.intervalId = 'fake';
 
       transport.kthxbye(function () {
-        global.clearInterval.callCount.should.equal(1);
-        should.not.exist(transport.intervalId);
+        assert.strictEqual(global.clearInterval.callCount, 1);
+        assert.strictEqual(transport.intervalId, null);
         done();
       });
     });
 
-    it("submit the logs", function (done) {
+    it('submit the logs', function (done) {
       transport.kthxbye(function () {
-        transport.submit.callCount.should.equal(1);
+        assert.strictEqual(transport.submit.callCount, 1);
         done();
       });
     });
 
-    it("should not send all messages if called while posting", function (done) {
+    it('should not send all messages if called while posting', function (done) {
       for (let index = 0; index < 30; index++) {
-        transport.add({ message: "message" + index });
+        transport.add({ message: 'message' + index });
       }
 
       transport.kthxbye(function () {
-        transport.logEvents.length.should.equal(0);
+        assert.strictEqual(transport.logEvents.length, 0);
         done();
       });
 
       clock.tick(1);
     });
 
-    it("should exit if logs are not cleared by the timeout period", function (done) {
-      transport.add({ message: "message" });
+    it('should exit if logs are not cleared by the timeout period', function (done) {
+      transport.add({ message: 'message' });
       transport.submit.callsFake(function (cb) {
         clock.tick(500);
         cb(); // callback is called but logEvents is not cleared
       });
 
       transport.kthxbye(function (error) {
-        error.should.be.Error();
-        transport.logEvents.length.should.equal(1);
+        assert.ok(error instanceof Error, `Expected error to be an Error`);
+        assert.strictEqual(transport.logEvents.length, 1);
         done();
       });
 

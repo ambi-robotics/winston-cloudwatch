@@ -88,25 +88,25 @@ Also have a look at [AWS CloudWatch Logs limits](https://docs.aws.amazon.com/Ama
 In ES5
 
 ```js
-const winston = require("winston");
-const WinstonCloudWatch = require("winston-cloudwatch");
+const winston = require('winston');
+const WinstonCloudWatch = require('winston-cloudwatch');
 ```
 
 In ES6
 
 ```js
-import { createLogger, format } from "winston";
-import * as WinstonCloudWatch from "winston-cloudwatch";
+import { createLogger, format } from 'winston';
+import * as WinstonCloudWatch from 'winston-cloudwatch';
 
 export const log = createLogger({
-  level: "debug",
+  level: 'debug',
   format: format.json(),
   transports: [
     new WinstonCloudWatch({
-      level: "error",
-      logGroupName: "groupName",
-      logStreamName: "errors",
-      awsRegion: "eu-west-3",
+      level: 'error',
+      logGroupName: 'groupName',
+      logStreamName: 'errors',
+      awsRegion: 'eu-west-3',
     }),
   ],
 });
@@ -130,17 +130,17 @@ at [this example](https://github.com/lazywithclass/winston-cloudwatch/blob/maste
 #### Custom AWS.CloudWatchLogs instance
 
 ```js
-const AWS = require("aws-sdk");
+const AWS = require('aws-sdk');
 
 AWS.config.update({
-  region: "us-east-1",
+  region: 'us-east-1',
 });
 
 winston.add(
   new WinstonCloudWatch({
     cloudWatchLogs: new AWS.CloudWatchLogs(),
-    logGroupName: "testing",
-    logStreamName: "first",
+    logGroupName: 'testing',
+    logStreamName: 'first',
   })
 );
 ```
