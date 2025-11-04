@@ -67,7 +67,7 @@ WinstonCloudWatch.prototype.log = function (info, callback) {
   debug("log (called by winston)", info);
 
   if (!isEmpty(info.message) || isError(info.message)) {
-    this.add(info);
+    this.add(info, info.timestamp);
   }
 
   if (!/^uncaughtException: /.test(info.message)) {
@@ -84,7 +84,7 @@ WinstonCloudWatch.prototype.log = function (info, callback) {
   this.submit(callback);
 };
 
-WinstonCloudWatch.prototype.add = function (log) {
+WinstonCloudWatch.prototype.add = function (log, timestamp) {
   debug("add log to queue", log);
 
   const self = this;
@@ -92,7 +92,7 @@ WinstonCloudWatch.prototype.add = function (log) {
   if (!isEmpty(log.message) || isError(log.message)) {
     self.logEvents.push({
       message: self.formatMessage(log),
-      timestamp: new Date().getTime(),
+      timestamp: timestamp || log.timestamp || new Date().getTime(),
     });
   }
 

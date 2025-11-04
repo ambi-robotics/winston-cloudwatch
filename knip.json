@@ -1,0 +1,11 @@
+{
+  "project": [
+    "lib/**/*.js",
+    "test/**/*.js"
+  ],
+  "ignore": [
+    "examples/*",
+    "typescript/**"
+  ],
+  "ignoreBinaries": []
+}

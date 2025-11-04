@@ -209,6 +209,58 @@ describe("index", function () {
       });
     });
 
+    describe("timestamp handling", function () {
+      let transport;
+
+      beforeEach(function () {
+        transport = new WinstonCloudWatch({});
+      });
+
+      it("uses timestamp from info object when provided", function (done) {
+        const customTimestamp = 1234567890;
+        transport.log(
+          { level: "level", message: "message", timestamp: customTimestamp },
+          function () {
+            clock.tick(2000);
+            const loggedEvent =
+              stubbedCloudwatchIntegration.lastLoggedEvents[0];
+            loggedEvent.timestamp.should.equal(customTimestamp);
+            done();
+          }
+        );
+      });
+
+      it("uses current time when no timestamp provided", function (done) {
+        const beforeTime = Date.now();
+        transport.log({ level: "level", message: "message" }, function () {
+          clock.tick(2000);
+          const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
+          loggedEvent.timestamp.should.be.approximately(beforeTime, 100);
+          done();
+        });
+      });
+
+      it("passes timestamp from add method explicitly", function () {
+        const customTimestamp = 9876543210;
+        transport.add({ level: "level", message: "message" }, customTimestamp);
+        clock.tick(2000);
+        const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
+        loggedEvent.timestamp.should.equal(customTimestamp);
+      });
+
+      it("prioritizes explicit timestamp over log.timestamp", function () {
+        const explicitTimestamp = 1111111111;
+        const logTimestamp = 2222222222;
+        transport.add(
+          { level: "level", message: "message", timestamp: logTimestamp },
+          explicitTimestamp
+        );
+        clock.tick(2000);
+        const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
+        loggedEvent.timestamp.should.equal(explicitTimestamp);
+      });
+    });
+
     describe("handles error", function () {
       beforeEach(function () {
         stubbedCloudwatchIntegration.upload = sinon.stub().yields("ERROR");
