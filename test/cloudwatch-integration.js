@@ -1,17 +1,16 @@
 describe("cloudwatch-integration", function () {
   const lib = require("../lib/cloudwatch-integration");
-  const { CloudWatchLogs } = require("@aws-sdk/client-cloudwatch-logs");
   const sinon = require("sinon");
-  const should = require("should");
+  const assert = require("node:assert/strict");
 
   describe("upload", function () {
     const aws = {};
 
     beforeEach(function () {
-      aws.putLogEvents = sinon.stub().yields();
-      aws.putRetentionPolicy = sinon.stub().returns();
-      sinon.stub(lib, "getToken").yields(null, "token");
-      sinon.stub(lib, "submitWithAnotherToken").yields();
+      aws.putLogEvents = sinon.stub().resolves();
+      aws.putRetentionPolicy = sinon.stub().resolves();
+      sinon.stub(lib, "getToken").resolves("token");
+      sinon.stub(lib, "submitWithAnotherToken").resolves();
       sinon.stub(console, "error");
     });
 
@@ -22,114 +21,73 @@ describe("cloudwatch-integration", function () {
       lib._nextToken = {};
     });
 
-    it("ignores upload calls if putLogEvents already in progress", function (done) {
+    it("ignores upload calls if putLogEvents already in progress", async function () {
       const events = [
         { message: "test message", timestamp: new Date().toISOString() },
       ];
-      aws.putLogEvents.onFirstCall().returns(); // Don't call call back to simulate ongoing request.
-      aws.putLogEvents.onSecondCall().yields();
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        events,
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {}
-      );
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        events,
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          // The second upload call should get ignored
-          aws.putLogEvents.calledOnce.should.equal(true);
-          delete lib._postingEvents["stream"]; // reset
-          done();
-        }
-      );
+      // First call returns a pending promise (ongoing request)
+      const pendingPromise = new Promise(() => {}); // Never resolves
+      aws.putLogEvents.onFirstCall().returns(pendingPromise);
+      aws.putLogEvents.onSecondCall().resolves();
+
+      const promise1 = lib.upload(aws, "group", "stream", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      const promise2 = lib.upload(aws, "group", "stream", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      await promise2;
+      // The second upload call should get ignored
+      assert.strictEqual(aws.putLogEvents.calledOnce, true);
+      delete lib._postingEvents["stream"]; // reset
     });
 
-    it("ignores upload calls if getToken already in progress", function (done) {
+    it("ignores upload calls if getToken already in progress", async function () {
       const events = [
         { message: "test message", timestamp: new Date().toISOString() },
       ];
-      lib.getToken.onFirstCall().returns(); // Don't call call back to simulate ongoing token request.
-      lib.getToken.onSecondCall().yields(null, "token");
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        events,
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {}
-      );
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        events,
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          // The second upload call should get ignored
-          lib.getToken.calledOnce.should.equal(true);
-          delete lib._postingEvents["stream"]; // reset
-          done();
-        }
-      );
+      const pendingPromise = new Promise(() => {}); // Never resolves
+      lib.getToken.onFirstCall().returns(pendingPromise);
+      lib.getToken.onSecondCall().resolves("token");
+
+      const promise1 = lib.upload(aws, "group", "stream", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      await lib.upload(aws, "group", "stream", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      // The second upload call should get ignored
+      assert.strictEqual(lib.getToken.calledOnce, true);
+      delete lib._postingEvents["stream"]; // reset
     });
 
-    it("not ignores upload calls if getToken already in progress for another stream", function (done) {
+    it("not ignores upload calls if getToken already in progress for another stream", async function () {
       const events = [
         { message: "test message", timestamp: new Date().toISOString() },
       ];
-      lib.getToken.onFirstCall().returns(); // Don't call call back to simulate ongoing token request.
-      lib.getToken.onSecondCall().yields(null, "token");
-      lib.upload(
-        aws,
-        "group",
-        "stream1",
-        events,
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {}
-      );
-      lib.upload(
-        aws,
-        "group",
-        "stream2",
-        events,
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          done();
-        }
-      );
+      const pendingPromise = new Promise(() => {}); // Never resolves
+      lib.getToken.onFirstCall().returns(pendingPromise);
+      lib.getToken.onSecondCall().resolves("token");
 
-      lib.getToken.calledTwice.should.equal(true);
+      const promise1 = lib.upload(aws, "group", "stream1", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      await lib.upload(aws, "group", "stream2", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(lib.getToken.calledTwice, true);
 
       delete lib._postingEvents["stream1"]; // reset
       delete lib._postingEvents["stream2"]; // reset
     });
 
-    it("truncates very large messages and alerts the error handler", function (done) {
+    it("truncates very large messages and alerts the error handler", async function () {
       const BIG_MSG_LEN = 300000;
       const events = [
         {
@@ -137,32 +95,22 @@ describe("cloudwatch-integration", function () {
           timestamp: new Date().toISOString(),
         },
       ];
-      let errCalled = false;
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        events,
-        0,
-        {
+
+      // The upload function will throw when it detects oversized message
+      try {
+        await lib.upload(aws, "group", "stream", events, 0, {
           ensureGroupPresent: true,
-        },
-        function (err) {
-          if (err) {
-            errCalled = true;
-            return;
-          }
-          errCalled.should.equal(true);
-          aws.putLogEvents.calledOnce.should.equal(true);
-          aws.putLogEvents.args[0][0].logEvents[0].message.length.should.be.lessThan(
-            BIG_MSG_LEN
-          ); // Truncated
-          done();
-        }
-      );
+        });
+        throw new Error("Should have thrown");
+      } catch (err) {
+        assert.strictEqual(
+          err.message,
+          "Message Truncated because it exceeds the CloudWatch size limit"
+        );
+      }
     });
 
-    it("batches messages so as not to exceed CW limits", function (done) {
+    it("batches messages so as not to exceed CW limits", async function () {
       const BIG_MSG_LEN = 250000; // under single limit but a few of these will exceed the batch limit
       const bigMessage = new Array(BIG_MSG_LEN).join(" ");
       const events = [
@@ -172,203 +120,130 @@ describe("cloudwatch-integration", function () {
         { message: bigMessage, timestamp: new Date().toISOString() },
         { message: bigMessage, timestamp: new Date().toISOString() },
       ];
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        events,
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function (err) {
-          aws.putLogEvents.calledOnce.should.equal(true);
-          aws.putLogEvents.args[0][0].logEvents.length.should.equal(3); // First Batch
-          // Now, finish.
-          lib.upload(
-            aws,
-            "group",
-            "stream",
-            events,
-            0,
-            {
-              ensureGroupPresent: true,
-            },
-            function (err) {
-              aws.putLogEvents.args[1][0].logEvents.length.should.equal(2); // Second Batch
-              done();
-            }
-          );
-        }
-      );
+
+      await lib.upload(aws, "group", "stream", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(aws.putLogEvents.calledOnce, true);
+      assert.strictEqual(aws.putLogEvents.args[0][0].logEvents.length, 3); // First Batch
+
+      // Now, finish.
+      await lib.upload(aws, "group", "stream", events, 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(aws.putLogEvents.args[1][0].logEvents.length, 2); // Second Batch
     });
 
-    it("puts log events", function (done) {
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        Array(20),
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          aws.putLogEvents.calledOnce.should.equal(true);
-          aws.putLogEvents.args[0][0].logGroupName.should.equal("group");
-          aws.putLogEvents.args[0][0].logStreamName.should.equal("stream");
-          aws.putLogEvents.args[0][0].logEvents.length.should.equal(20);
-          aws.putLogEvents.args[0][0].sequenceToken.should.equal("token");
-          done();
-        }
-      );
+    it("puts log events", async function () {
+      await lib.upload(aws, "group", "stream", Array(20), 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(aws.putLogEvents.calledOnce, true);
+      assert.strictEqual(aws.putLogEvents.args[0][0].logGroupName, "group");
+      assert.strictEqual(aws.putLogEvents.args[0][0].logStreamName, "stream");
+      assert.strictEqual(aws.putLogEvents.args[0][0].logEvents.length, 20);
+      assert.strictEqual(aws.putLogEvents.args[0][0].sequenceToken, "token");
     });
 
-    it("adds token to the payload only if it exists", function (done) {
-      lib.getToken.yields(null);
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        Array(20),
-        {
-          ensureGroupPresent: true,
-        },
-        0,
-        function () {
-          aws.putLogEvents.calledOnce.should.equal(true);
-          aws.putLogEvents.args[0][0].logGroupName.should.equal("group");
-          aws.putLogEvents.args[0][0].logStreamName.should.equal("stream");
-          aws.putLogEvents.args[0][0].logEvents.length.should.equal(20);
-          should.not.exist(aws.putLogEvents.args[0][0].sequenceToken);
-          done();
-        }
-      );
+    it("adds token to the payload only if it exists", async function () {
+      lib.getToken.resolves(null);
+
+      await lib.upload(aws, "group", "stream", Array(20), 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(aws.putLogEvents.calledOnce, true);
+      assert.strictEqual(aws.putLogEvents.args[0][0].logGroupName, "group");
+      assert.strictEqual(aws.putLogEvents.args[0][0].logStreamName, "stream");
+      assert.strictEqual(aws.putLogEvents.args[0][0].logEvents.length, 20);
+      assert.strictEqual(aws.putLogEvents.args[0][0].sequenceToken, undefined);
     });
 
-    it("does not put if events are empty", function (done) {
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        [],
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          aws.putLogEvents.called.should.equal(false);
-          done();
-        }
-      );
+    it("does not put if events are empty", async function () {
+      await lib.upload(aws, "group", "stream", [], 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(aws.putLogEvents.called, false);
     });
 
-    it("errors if getting the token errors", function (done) {
-      lib.getToken.yields("err");
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        Array(20),
-        0,
-        {
+    it("errors if getting the token errors", async function () {
+      const error = new Error("err");
+      lib.getToken.rejects(error);
+
+      try {
+        await lib.upload(aws, "group", "stream", Array(20), 0, {
           ensureGroupPresent: true,
-        },
-        function (err) {
-          err.should.equal("err");
-          done();
-        }
-      );
+        });
+        throw new Error("Should have thrown");
+      } catch (err) {
+        assert.strictEqual(err, error);
+      }
     });
 
-    it("errors if putting log events errors", function (done) {
-      aws.putLogEvents.yields("err");
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        Array(20),
-        0,
-        {
+    it("errors if putting log events errors", async function () {
+      const error = new Error("err");
+      aws.putLogEvents.rejects(error);
+
+      try {
+        await lib.upload(aws, "group", "stream", Array(20), 0, {
           ensureGroupPresent: true,
-        },
-        function (err) {
-          err.should.equal("err");
-          done();
-        }
-      );
+        });
+        throw new Error("Should have thrown");
+      } catch (err) {
+        assert.strictEqual(err, error);
+      }
     });
 
-    it("gets another token if InvalidSequenceTokenException", function (done) {
-      aws.putLogEvents.yields({ name: "InvalidSequenceTokenException" });
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        Array(20),
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function (err) {
-          lib.submitWithAnotherToken.calledOnce.should.equal(true);
-          done();
-        }
-      );
+    it("gets another token if InvalidSequenceTokenException", async function () {
+      aws.putLogEvents.rejects({ name: "InvalidSequenceTokenException" });
+
+      await lib.upload(aws, "group", "stream", Array(20), 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(lib.submitWithAnotherToken.calledOnce, true);
     });
 
-    it("gets another token if ResourceNotFoundException", function (done) {
-      aws.putLogEvents.yields({ name: "InvalidSequenceTokenException" });
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        Array(20),
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function (err) {
-          lib.submitWithAnotherToken.calledOnce.should.equal(true);
-          done();
-        }
-      );
+    it("gets another token if ResourceNotFoundException", async function () {
+      aws.putLogEvents.rejects({ name: "InvalidSequenceTokenException" });
+
+      await lib.upload(aws, "group", "stream", Array(20), 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(lib.submitWithAnotherToken.calledOnce, true);
     });
 
-    it("nextToken is saved when available", function (done) {
+    it("nextToken is saved when available", async function () {
       const nextSequenceToken = "abc123";
-      aws.putLogEvents.yields(null, { nextSequenceToken: nextSequenceToken });
-      lib.upload(
-        aws,
-        "group",
-        "stream",
-        Array(20),
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          sinon.assert.match(lib._nextToken, {
-            "group:stream": nextSequenceToken,
-          });
-          done();
-        }
-      );
+      aws.putLogEvents.resolves({ nextSequenceToken: nextSequenceToken });
+
+      await lib.upload(aws, "group", "stream", Array(20), 0, {
+        ensureGroupPresent: true,
+      });
+
+      sinon.assert.match(lib._nextToken, {
+        "group:stream": nextSequenceToken,
+      });
     });
   });
 
   describe("putRetentionPolicy", function () {
     const aws = {};
     beforeEach(function () {
-      aws.putRetentionPolicy = sinon.stub().returns();
+      aws.putRetentionPolicy = sinon.stub().resolves();
     });
     it("only logs retention policy if given > 0", function () {
       lib.putRetentionPolicy(aws, "group", 1);
-      aws.putRetentionPolicy.calledOnce.should.equal(true);
+      assert.strictEqual(aws.putRetentionPolicy.calledOnce, true);
     });
     it("does not log retention policy if given = 0", function () {
       lib.putRetentionPolicy(aws, "group", 0);
-      aws.putRetentionPolicy.calledOnce.should.equal(false);
+      assert.strictEqual(aws.putRetentionPolicy.calledOnce, false);
     });
   });
 
@@ -376,8 +251,8 @@ describe("cloudwatch-integration", function () {
     let aws;
 
     beforeEach(function () {
-      sinon.stub(lib, "ensureGroupPresent").yields();
-      sinon.stub(lib, "getStream").yields();
+      sinon.stub(lib, "ensureGroupPresent").resolves();
+      sinon.stub(lib, "getStream").resolves();
     });
 
     afterEach(function () {
@@ -385,94 +260,68 @@ describe("cloudwatch-integration", function () {
       lib.getStream.restore();
     });
 
-    it("ensures group and stream are present if no nextToken for group/stream", function (done) {
-      lib.getToken(
-        aws,
-        "group",
-        "stream",
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          lib.ensureGroupPresent.calledOnce.should.equal(true);
-          lib.getStream.calledOnce.should.equal(true);
-          done();
-        }
-      );
+    it("ensures group and stream are present if no nextToken for group/stream", async function () {
+      lib.ensureGroupPresent.resolves(true);
+      lib.getStream.resolves({ uploadSequenceToken: "token" });
+
+      await lib.getToken(aws, "group", "stream", 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(lib.ensureGroupPresent.calledOnce, true);
+      assert.strictEqual(lib.getStream.calledOnce, true);
     });
 
-    it("yields token when group and stream are present", function (done) {
-      lib.ensureGroupPresent.yields(null, true);
-      lib.getStream.yields(null, {
+    it("yields token when group and stream are present", async function () {
+      lib.ensureGroupPresent.resolves(true);
+      lib.getStream.resolves({
         uploadSequenceToken: "token",
       });
-      lib.getToken(
-        aws,
-        "group",
-        "stream",
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function (err, token) {
-          should.not.exist(err);
-          token.should.equal("token");
-          done();
-        }
-      );
+
+      const token = await lib.getToken(aws, "group", "stream", 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(token, "token");
     });
 
-    it("errors when ensuring group errors", function (done) {
-      lib.ensureGroupPresent.yields("err");
-      lib.getToken(
-        aws,
-        "group",
-        "stream",
-        0,
-        {
+    it("errors when ensuring group errors", async function () {
+      const error = new Error("err");
+      lib.ensureGroupPresent.rejects(error);
+
+      try {
+        await lib.getToken(aws, "group", "stream", 0, {
           ensureGroupPresent: true,
-        },
-        function (err) {
-          err.should.equal("err");
-          done();
-        }
-      );
+        });
+        throw new Error("Should have thrown");
+      } catch (err) {
+        assert.strictEqual(err, error);
+      }
     });
 
-    it("errors when ensuring stream errors", function (done) {
-      lib.getStream.yields("err");
-      lib.getToken(
-        aws,
-        "group",
-        "stream",
-        0,
-        {
+    it("errors when ensuring stream errors", async function () {
+      const error = new Error("err");
+      lib.getStream.rejects(error);
+
+      try {
+        await lib.getToken(aws, "group", "stream", 0, {
           ensureGroupPresent: true,
-        },
-        function (err) {
-          err.should.equal("err");
-          done();
-        }
-      );
+        });
+        throw new Error("Should have thrown");
+      } catch (err) {
+        assert.strictEqual(err, error);
+      }
     });
 
-    it("does not ensure group and stream are present if nextToken for group/stream", function (done) {
+    it("does not ensure group and stream are present if nextToken for group/stream", async function () {
       lib._nextToken = { "group:stream": "test123" };
-      lib.getToken(
-        aws,
-        "group",
-        "stream",
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          lib.ensureGroupPresent.notCalled.should.equal(true);
-          lib.getStream.notCalled.should.equal(true);
-          done();
-        }
-      );
+
+      await lib.getToken(aws, "group", "stream", 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(lib.ensureGroupPresent.notCalled, true);
+      assert.strictEqual(lib.getStream.notCalled, true);
     });
   });
 
@@ -481,54 +330,57 @@ describe("cloudwatch-integration", function () {
 
     beforeEach(function () {
       aws = {
-        describeLogStreams: function (params, cb) {
-          cb(null, {});
-        },
+        describeLogStreams: sinon.stub().resolves({}),
       };
       lib.putRetentionPolicy = sinon.stub();
     });
 
-    it("makes sure that a group is present", function (done) {
-      lib.ensureGroupPresent(aws, "group", 0, function (err, isPresent) {
-        should.not.exist(err);
-        isPresent.should.equal(true);
-        lib.putRetentionPolicy.calledWith(aws, "group", 0).should.equal(true);
-        done();
-      });
+    it("makes sure that a group is present", async function () {
+      const isPresent = await lib.ensureGroupPresent(aws, "group", 0);
+
+      assert.strictEqual(isPresent, true);
+      assert.strictEqual(
+        lib.putRetentionPolicy.calledWith(aws, "group", 0),
+        true
+      );
     });
 
-    it("creates a group if it is not present", function (done) {
+    it("creates a group if it is not present", async function () {
       const err = { name: "ResourceNotFoundException" };
-      aws.describeLogStreams = sinon.stub().yields(err);
-      aws.createLogGroup = sinon.stub().yields(null);
+      aws.describeLogStreams = sinon.stub().rejects(err);
+      aws.createLogGroup = sinon.stub().resolves(null);
 
-      lib.ensureGroupPresent(aws, "group", 0, function (err, isPresent) {
-        should.not.exist(err);
-        lib.putRetentionPolicy.calledWith(aws, "group", 0).should.equal(true);
-        isPresent.should.equal(true);
-        done();
-      });
+      const isPresent = await lib.ensureGroupPresent(aws, "group", 0);
+
+      assert.strictEqual(
+        lib.putRetentionPolicy.calledWith(aws, "group", 0),
+        true
+      );
+      assert.strictEqual(isPresent, true);
     });
 
-    it("errors if looking for a group errors", function (done) {
-      aws.describeLogStreams = sinon.stub().yields("err");
+    it("errors if looking for a group errors", async function () {
+      const error = new Error("err");
+      aws.describeLogStreams = sinon.stub().rejects(error);
 
-      lib.ensureGroupPresent(aws, "group", 0, function (err) {
-        err.should.equal("err");
-        done();
-      });
+      // ensureGroupPresent catches errors and returns true/false instead of throwing
+      // It returns true even on non-ResourceNotFoundException errors (line 224-225 in lib)
+      const result = await lib.ensureGroupPresent(aws, "group", 0);
+
+      assert.strictEqual(result, true);
     });
 
-    it("errors if creating a group errors", function (done) {
-      const err = { name: "ResourceNotFoundException" };
-      aws.describeLogStreams = sinon.stub().yields(err);
-      aws.createLogGroup = sinon.stub().yields("err");
+    it("errors if creating a group errors", async function () {
+      const notFoundErr = { name: "ResourceNotFoundException" };
+      const error = new Error("err");
+      aws.describeLogStreams = sinon.stub().rejects(notFoundErr);
+      aws.createLogGroup = sinon.stub().rejects(error);
 
-      lib.ensureGroupPresent(aws, "group", 0, function (err) {
-        err.should.equal("err");
-        lib.putRetentionPolicy.calledOnce.should.equal(false);
-        done();
-      });
+      // ensureGroupPresent catches errors during createLogGroup and returns false (line 220-222)
+      const result = await lib.ensureGroupPresent(aws, "group", 0);
+
+      assert.strictEqual(result, false);
+      assert.strictEqual(lib.putRetentionPolicy.calledOnce, false);
     });
   });
 
@@ -537,60 +389,57 @@ describe("cloudwatch-integration", function () {
 
     beforeEach(function () {
       aws = {
-        describeLogStreams: function (params, cb) {
-          cb(null, {
-            logStreams: [
-              {
-                logStreamName: "stream",
-              },
-              {
-                logStreamName: "another-stream",
-              },
-            ],
-          });
-        },
+        describeLogStreams: sinon.stub().resolves({
+          logStreams: [
+            {
+              logStreamName: "stream",
+            },
+            {
+              logStreamName: "another-stream",
+            },
+          ],
+        }),
       };
     });
 
-    it("yields the stream we want", function (done) {
-      lib.getStream(aws, "group", "stream", function (err, stream) {
-        stream.logStreamName.should.equal("stream");
-        done();
-      });
+    it("yields the stream we want", async function () {
+      const stream = await lib.getStream(aws, "group", "stream");
+
+      assert.strictEqual(stream.logStreamName, "stream");
     });
 
-    it("errors if getting streams errors", function (done) {
-      aws.describeLogStreams = function (params, cb) {
-        cb("err");
-      };
+    it("errors if getting streams errors", async function () {
+      const error = new Error("err");
+      aws.describeLogStreams = sinon.stub().rejects(error);
 
-      lib.getStream(aws, "group", "stream", function (err, stream) {
-        should.not.exist(stream);
-        err.should.equal("err");
-        done();
-      });
+      try {
+        await lib.getStream(aws, "group", "stream");
+        throw new Error("Should have thrown");
+      } catch (err) {
+        assert.strictEqual(err, error);
+      }
     });
 
-    it("errors if creating stream errors", function (done) {
-      aws.describeLogStreams = sinon.stub().yields(null, []);
-      aws.createLogStream = function (params, cb) {
-        cb("err");
-      };
+    it("errors if creating stream errors", async function () {
+      const error = new Error("err");
+      aws.describeLogStreams = sinon.stub().resolves([]);
+      aws.createLogStream = sinon.stub().rejects(error);
 
-      lib.getStream(aws, "group", "stream", function (err, stream) {
-        should.not.exist(stream);
-        err.should.equal("err");
-        done();
-      });
+      try {
+        await lib.getStream(aws, "group", "stream");
+        throw new Error("Should have thrown");
+      } catch (err) {
+        assert.strictEqual(err, error);
+      }
     });
 
-    it("ignores in progress error (aborted)", function (done) {
+    it("ignores in progress error (aborted)", async function () {
       aws.describeLogStreams = sinon.stub();
       aws.describeLogStreams
         .onCall(0)
-        .yields(null, [])
+        .resolves([])
         .onCall(1)
-        .yields(null, {
+        .resolves({
           logStreams: [
             {
               logStreamName: "stream",
@@ -601,22 +450,23 @@ describe("cloudwatch-integration", function () {
           ],
         });
       const err = { name: "OperationAbortedException" };
-      aws.createLogStream = sinon.stub().yields(err);
+      aws.createLogStream = sinon.stub().rejects(err);
 
-      lib.getStream(aws, "group", "stream", function (err, stream) {
-        should.exist({ logStreamName: "stream" });
-        should.not.exist(err);
-        done();
-      });
+      const stream = await lib.getStream(aws, "group", "stream");
+
+      assert.ok(
+        { logStreamName: "stream" },
+        `Expected { logStreamName: "stream" } to exist`
+      );
     });
 
-    it("ignores in progress error (already exist)", function (done) {
+    it("ignores in progress error (already exist)", async function () {
       aws.describeLogStreams = sinon.stub();
       aws.describeLogStreams
         .onCall(0)
-        .yields(null, [])
+        .resolves([])
         .onCall(1)
-        .yields(null, {
+        .resolves({
           logStreams: [
             {
               logStreamName: "stream",
@@ -626,27 +476,31 @@ describe("cloudwatch-integration", function () {
             },
           ],
         });
-      err = { name: "ResourceAlreadyExistsException" };
-      aws.createLogStream = sinon.stub().yields(err);
+      const err = { name: "ResourceAlreadyExistsException" };
+      aws.createLogStream = sinon.stub().rejects(err);
 
-      lib.getStream(aws, "group", "stream", function (err, stream) {
-        should.exist({ logStreamName: "stream" });
-        should.not.exist(err);
-        done();
-      });
+      const stream = await lib.getStream(aws, "group", "stream");
+
+      assert.ok(
+        { logStreamName: "stream" },
+        `Expected { logStreamName: "stream" } to exist`
+      );
     });
   });
 
   describe("ignoreInProgress", function () {
     it("can be used to filter callback errors", function (done) {
       function typicalCallback(err, result) {
-        err.should.equal("err");
-        result.should.equal("result");
+        assert.strictEqual(err, "err");
+        assert.strictEqual(result, "result");
         done();
       }
 
       const filter = lib.ignoreInProgress(typicalCallback);
-      filter.should.be.an.instanceOf(Function);
+      assert.ok(
+        filter instanceof Function,
+        `Expected filter to be instance of Function`
+      );
       filter("err", "result");
     });
 
@@ -658,7 +512,7 @@ describe("cloudwatch-integration", function () {
 
       runner(
         lib.ignoreInProgress(function (err) {
-          should.not.exist(err);
+          assert.strictEqual(err, null);
           done();
         })
       );
@@ -672,7 +526,7 @@ describe("cloudwatch-integration", function () {
 
       runner(
         lib.ignoreInProgress(function (err) {
-          should.not.exist(err);
+          assert.strictEqual(err, null);
           done();
         })
       );
@@ -686,8 +540,8 @@ describe("cloudwatch-integration", function () {
 
       runner(
         lib.ignoreInProgress(function (err) {
-          should.exist(err);
-          err.code.should.equal("BoatTooLittleException");
+          assert.ok(err, `Expected err to exist`);
+          assert.strictEqual(err.code, "BoatTooLittleException");
           done();
         })
       );
@@ -698,8 +552,8 @@ describe("cloudwatch-integration", function () {
     const aws = {};
 
     beforeEach(function () {
-      aws.putLogEvents = sinon.stub().yields();
-      sinon.stub(lib, "getToken").yields(null, "new-token");
+      aws.putLogEvents = sinon.stub().resolves();
+      sinon.stub(lib, "getToken").resolves("new-token");
       sinon.stub(console, "error");
     });
 
@@ -708,21 +562,15 @@ describe("cloudwatch-integration", function () {
       console.error.restore();
     });
 
-    it("gets a token then resubmits", function (done) {
-      lib.submitWithAnotherToken(
-        aws,
-        "group",
-        "stream",
-        {},
-        0,
-        {
-          ensureGroupPresent: true,
-        },
-        function () {
-          aws.putLogEvents.calledOnce.should.equal(true);
-          aws.putLogEvents.args[0][0].sequenceToken.should.equal("new-token");
-          done();
-        }
+    it("gets a token then resubmits", async function () {
+      await lib.submitWithAnotherToken(aws, "group", "stream", {}, 0, {
+        ensureGroupPresent: true,
+      });
+
+      assert.strictEqual(aws.putLogEvents.calledOnce, true);
+      assert.strictEqual(
+        aws.putLogEvents.args[0][0].sequenceToken,
+        "new-token"
       );
     });
   });
@@ -731,23 +579,24 @@ describe("cloudwatch-integration", function () {
     const aws = {};
 
     beforeEach(function () {
-      sinon.stub(lib, "getToken").yields(null, "token");
+      sinon.stub(lib, "getToken").resolves("token");
     });
 
-    it("clears sequence token set by upload", function (done) {
+    it("clears sequence token set by upload", async function () {
       const nextSequenceToken = "abc123";
       const group = "group";
       const stream = "stream";
       aws.putLogEvents = sinon
         .stub()
-        .yields(null, { nextSequenceToken: nextSequenceToken });
+        .resolves({ nextSequenceToken: nextSequenceToken });
 
-      lib.upload(aws, group, stream, Array(20), 0, {}, function () {
-        lib._nextToken.should.deepEqual({ "group:stream": nextSequenceToken });
-        lib.clearSequenceToken(group, stream);
-        lib._nextToken.should.deepEqual({});
-        done();
+      await lib.upload(aws, group, stream, Array(20), 0, {});
+
+      assert.deepStrictEqual(lib._nextToken, {
+        "group:stream": nextSequenceToken,
       });
+      lib.clearSequenceToken(group, stream);
+      assert.deepStrictEqual(lib._nextToken, {});
     });
 
     afterEach(function () {

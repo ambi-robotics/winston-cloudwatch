@@ -1,33 +1,20 @@
 describe("index", function () {
+  const assert = require("node:assert/strict");
   const sinon = require("sinon");
-  const should = require("should");
-  const mockery = require("mockery");
+  const path = require("path");
+  const rewiremock = require("rewiremock/node");
 
   const stubbedWinston = {
     transports: {},
     Transport: function () {},
   };
-  const stubbedAWS = {
-    CloudWatchLogs: function (options) {
-      this.fakeOptions = options;
-    },
-    config: {
-      update: sinon.stub(),
-    },
-  };
   const stubbedCloudwatchIntegration = {
-    upload: sinon.spy(function (
-      aws,
-      groupName,
-      streamName,
-      logEvents,
-      retention,
-      options,
-      cb
-    ) {
-      this.lastLoggedEvents = logEvents.splice(0, 20);
-      cb();
-    }),
+    upload: sinon.spy(
+      function (aws, groupName, streamName, logEvents, retention, options) {
+        this.lastLoggedEvents = logEvents.splice(0, 20);
+        return Promise.resolve();
+      }
+    ),
     clearSequenceToken: sinon.stub(),
   };
   const clock = sinon.useFakeTimers();
@@ -35,32 +22,19 @@ describe("index", function () {
   let WinstonCloudWatch;
 
   before(function () {
-    mockery.enable({
-      warnOnReplace: false,
-    });
-    mockery.registerAllowable("util");
-    mockery.registerAllowable("lodash.find");
-    mockery.registerAllowable("lodash.assign");
-    mockery.registerAllowable("lodash.isempty");
-    mockery.registerAllowable("lodash.iserror");
-    mockery.registerAllowable("./lib/utils");
-    mockery.registerAllowable("@aws-sdk/client-cloudwatch-logs");
-    mockery.registerAllowable("aws-crt");
-
-    mockery.registerMock("winston", stubbedWinston);
-    mockery.registerMock("aws-sdk", stubbedAWS);
-    mockery.registerMock(
-      "./lib/cloudwatch-integration",
-      stubbedCloudwatchIntegration
+    const indexPath = path.resolve(__dirname, "../index.js");
+    const integrationPath = path.resolve(
+      __dirname,
+      "../lib/cloudwatch-integration"
     );
 
-    mockery.registerAllowable("../index.js");
-    WinstonCloudWatch = require("../index.js");
+    WinstonCloudWatch = rewiremock.proxy(() => require(indexPath), {
+      winston: stubbedWinston,
+      [integrationPath]: stubbedCloudwatchIntegration,
+    });
   });
 
   after(function () {
-    mockery.deregisterAll();
-    mockery.disable();
     clock.restore();
   });
 
@@ -70,7 +44,10 @@ describe("index", function () {
         cloudWatchLogs: { fakeOptions: { region: "us-west-2" } },
       };
       const transport = new WinstonCloudWatch(options);
-      transport.cloudWatchLogs.fakeOptions.region.should.equal("us-west-2");
+      assert.strictEqual(
+        transport.cloudWatchLogs.fakeOptions.region,
+        "us-west-2"
+      );
     });
 
     it("allows awsOptions", function () {
@@ -81,7 +58,7 @@ describe("index", function () {
       };
       const transport = new WinstonCloudWatch(options);
       transport.cloudWatchLogs.config.region().then((region) => {
-        region.should.equal("us-east-1");
+        assert.strictEqual(region, "us-east-1");
       });
     });
 
@@ -94,7 +71,7 @@ describe("index", function () {
       };
       const transport = new WinstonCloudWatch(options);
       return transport.cloudWatchLogs.config.region().then((region) => {
-        region.should.equal("us-east-1");
+        assert.strictEqual(region, "us-east-1");
       });
     });
   });
@@ -111,7 +88,7 @@ describe("index", function () {
     });
 
     it("does not upload if empty message", function (done) {
-      stubbedCloudwatchIntegration.upload.called.should.equal(false);
+      assert.strictEqual(stubbedCloudwatchIntegration.upload.called, false);
       done();
     });
 
@@ -119,7 +96,7 @@ describe("index", function () {
       transport = new WinstonCloudWatch({});
       transport.log({ message: "uncaughtException: " }, function () {
         clock.tick(2000);
-        should.not.exist(transport.intervalId);
+        assert.strictEqual(transport.intervalId, null);
         // if done is called it means submit(callback) has been called
         done();
       });
@@ -146,9 +123,9 @@ describe("index", function () {
         const message =
           stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
         const jsonMessage = JSON.parse(message);
-        jsonMessage.level.should.equal("level");
-        jsonMessage.message.should.equal("message");
-        jsonMessage.something.should.equal("else");
+        assert.strictEqual(jsonMessage.level, "level");
+        assert.strictEqual(jsonMessage.message, "message");
+        assert.strictEqual(jsonMessage.something, "else");
       });
     });
 
@@ -165,7 +142,7 @@ describe("index", function () {
         it("logs text", function () {
           const message =
             stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
-          message.should.equal("level - message");
+          assert.strictEqual(message, "level - message");
         });
       });
 
@@ -188,7 +165,7 @@ describe("index", function () {
         it("logs text", function () {
           const message =
             stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
-          message.should.equal("level message else");
+          assert.strictEqual(message, "level message else");
         });
       });
     });
@@ -205,7 +182,7 @@ describe("index", function () {
       it("logs text", function () {
         const message =
           stubbedCloudwatchIntegration.lastLoggedEvents[0].message;
-        message.should.equal("level - message");
+        assert.strictEqual(message, "level - message");
       });
     });
 
@@ -224,7 +201,7 @@ describe("index", function () {
             clock.tick(2000);
             const loggedEvent =
               stubbedCloudwatchIntegration.lastLoggedEvents[0];
-            loggedEvent.timestamp.should.equal(customTimestamp);
+            assert.strictEqual(loggedEvent.timestamp, customTimestamp);
             done();
           }
         );
@@ -235,7 +212,10 @@ describe("index", function () {
         transport.log({ level: "level", message: "message" }, function () {
           clock.tick(2000);
           const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
-          loggedEvent.timestamp.should.be.approximately(beforeTime, 100);
+          assert.ok(
+            Math.abs(loggedEvent.timestamp - beforeTime) <= 100,
+            `Expected loggedEvent.timestamp to be approximately beforeTime ± 100`
+          );
           done();
         });
       });
@@ -245,7 +225,7 @@ describe("index", function () {
         transport.add({ level: "level", message: "message" }, customTimestamp);
         clock.tick(2000);
         const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
-        loggedEvent.timestamp.should.equal(customTimestamp);
+        assert.strictEqual(loggedEvent.timestamp, customTimestamp);
       });
 
       it("prioritizes explicit timestamp over log.timestamp", function () {
@@ -257,40 +237,47 @@ describe("index", function () {
         );
         clock.tick(2000);
         const loggedEvent = stubbedCloudwatchIntegration.lastLoggedEvents[0];
-        loggedEvent.timestamp.should.equal(explicitTimestamp);
+        assert.strictEqual(loggedEvent.timestamp, explicitTimestamp);
       });
     });
 
     describe("handles error", function () {
+      let consoleErrorStub;
+
       beforeEach(function () {
-        stubbedCloudwatchIntegration.upload = sinon.stub().yields("ERROR");
-        mockery.registerMock(
-          "./lib/cloudwatch-integration",
-          stubbedCloudwatchIntegration
-        );
-        sinon.stub(console, "error");
+        stubbedCloudwatchIntegration.upload = sinon
+          .stub()
+          .rejects(new Error("ERROR"));
+        consoleErrorStub = sinon.stub(console, "error");
       });
 
       afterEach(function () {
-        stubbedCloudwatchIntegration.upload = sinon.spy();
-        console.error.restore();
+        stubbedCloudwatchIntegration.upload = sinon.spy(
+          function (aws, groupName, streamName, logEvents, retention, options) {
+            this.lastLoggedEvents = logEvents.splice(0, 20);
+            return Promise.resolve();
+          }
+        );
+        if (consoleErrorStub && consoleErrorStub.restore) {
+          consoleErrorStub.restore();
+        }
       });
 
-      it("invoking errorHandler if provided", function () {
+      it("invoking errorHandler if provided", async function () {
         const errorHandlerSpy = sinon.spy();
         const transport = new WinstonCloudWatch({
           errorHandler: errorHandlerSpy,
         });
         transport.log({ level: "level", message: "message" }, sinon.stub());
-        clock.tick(2000);
-        errorHandlerSpy.args[0][0].should.equal("ERROR");
+        await clock.tickAsync(2000);
+        assert.strictEqual(errorHandlerSpy.args[0][0].message, "ERROR");
       });
 
-      it("console.error if errorHandler is not provided", function () {
+      it("console.error if errorHandler is not provided", async function () {
         const transport = new WinstonCloudWatch({});
         transport.log({ level: "level", message: "message" }, sinon.stub());
-        clock.tick(2000);
-        console.error.args[0][0].should.equal("ERROR");
+        await clock.tickAsync(2000);
+        assert.strictEqual(console.error.args[0][0].message, "ERROR");
       });
     });
   });
@@ -318,15 +305,15 @@ describe("index", function () {
       transport.intervalId = "fake";
 
       transport.kthxbye(function () {
-        global.clearInterval.callCount.should.equal(1);
-        should.not.exist(transport.intervalId);
+        assert.strictEqual(global.clearInterval.callCount, 1);
+        assert.strictEqual(transport.intervalId, null);
         done();
       });
     });
 
     it("submit the logs", function (done) {
       transport.kthxbye(function () {
-        transport.submit.callCount.should.equal(1);
+        assert.strictEqual(transport.submit.callCount, 1);
         done();
       });
     });
@@ -337,7 +324,7 @@ describe("index", function () {
       }
 
       transport.kthxbye(function () {
-        transport.logEvents.length.should.equal(0);
+        assert.strictEqual(transport.logEvents.length, 0);
         done();
       });
 
@@ -352,8 +339,8 @@ describe("index", function () {
       });
 
       transport.kthxbye(function (error) {
-        error.should.be.Error();
-        transport.logEvents.length.should.equal(1);
+        assert.ok(error instanceof Error, `Expected error to be an Error`);
+        assert.strictEqual(transport.logEvents.length, 1);
         done();
       });
 

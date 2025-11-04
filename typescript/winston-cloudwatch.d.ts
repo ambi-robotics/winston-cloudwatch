@@ -1,46 +1,20 @@
 import TransportStream = require("winston-transport");
 
-import { CloudWatchLogs, CloudWatchLogsClientConfig, LogStream } from "@aws-sdk/client-cloudwatch-logs";
+import {
+  CloudWatchLogs,
+  CloudWatchLogsClientConfig,
+} from "@aws-sdk/client-cloudwatch-logs";
 
 import winston = require("winston");
 
 // Declare the default WinstonCloudwatch class
 declare class WinstonCloudwatch extends TransportStream {
+  // Public API methods (maintain callback-based signatures for backward compatibility)
   add(log: WinstonCloudwatch.LogObject, timestamp?: number): void;
-  kthxbye(callback: (err: Error) => void): void;
-  upload(
-    aws: CloudWatchLogs,
-    groupName: string,
-    streamName: string,
-    logEvents: any[],
-    retentionInDays: number,
-    options: WinstonCloudwatch.CloudwatchTransportOptions,
-    cb: (err: Error, data: any) => void
-  ): void;
-  getToken(
-    aws: CloudWatchLogs,
-    groupName: string,
-    streamName: string,
-    retentionInDays: number,
-    options: WinstonCloudwatch.CloudwatchTransportOptions,
-    cb: (err: Error, data: string) => void
-  ): void;
-  ensureGroupPresent(
-    aws: CloudWatchLogs,
-    name: string,
-    retentionInDays: number,
-    cb: (err: Error, data: boolean) => void
-  ): void;
-  getStream(
-    aws: CloudWatchLogs,
-    groupName: string,
-    streamName: string,
-    cb: (
-      err: Error,
-      data: LogStream
-    ) => void
-  ): void;
-  ignoreInProgress(cb: (err: Error) => void): void;
+  kthxbye(callback: (err?: Error) => void): void;
+  submit(callback: (err?: Error) => void): void;
+
+  // Constructor
   constructor(options?: WinstonCloudwatch.CloudwatchTransportOptions);
 }
 // Export the default winston cloudwatch class

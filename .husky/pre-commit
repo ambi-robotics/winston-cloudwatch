@@ -4,3 +4,6 @@ if [ "$BRANCH" == "master" ] || [ "$BRANCH" == "develop" ]; then
   echo "Do not commit directly to master or develop branches"
   exit 1
 fi
+
+# Format staged files with Prettier
+npm run format

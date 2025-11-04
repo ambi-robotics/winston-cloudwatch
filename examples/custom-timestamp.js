@@ -64,4 +64,6 @@ historicalLogs.forEach((log) => {
 
 console.log("Logs queued. They will be uploaded in batches.");
 console.log("Note: Process will remain running due to setInterval.");
-console.log("Press Ctrl+C to exit, or use transport.kthxbye() to flush and exit.");
+console.log(
+  "Press Ctrl+C to exit, or use transport.kthxbye() to flush and exit."
+);
